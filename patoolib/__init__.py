@@ -414,13 +414,16 @@ def move_outdir_orphan (outdir):
     return (False, "multiple files in root")
 
 
-def run_archive_cmdlist (archive_cmdlist, verbosity=0):
+def run_archive_cmdlist (archive_cmdlist, verbosity=0, timeout=None):
     """Run archive command."""
     # archive_cmdlist is a command list with optional keyword arguments
     if isinstance(archive_cmdlist, tuple):
         cmdlist, runkwargs = archive_cmdlist
     else:
         cmdlist, runkwargs = archive_cmdlist, {}
+    # optionally add timeout for subprocess
+    if timeout is not None:
+        runkwargs['timeout'] = timeout
     return util.run_checked(cmdlist, verbosity=verbosity, **runkwargs)
 
 
@@ -463,7 +466,7 @@ def cleanup_outdir (outdir, archive):
 
 
 def _extract_archive(archive, verbosity=0, interactive=True, outdir=None,
-                     program=None, format=None, compression=None):
+                     program=None, format=None, compression=None, timeout=None):
     """Extract an archive.
     @return: output directory if command is 'extract', else None
     """
@@ -484,7 +487,7 @@ def _extract_archive(archive, verbosity=0, interactive=True, outdir=None,
             # an empty command list means the get_archive_cmdlist() function
             # already handled the command (eg. when it's a builtin Python
             # function)
-            run_archive_cmdlist(cmdlist, verbosity=verbosity)
+            run_archive_cmdlist(cmdlist, verbosity=verbosity, timeout=timeout)
         if do_cleanup_outdir:
             target, msg = cleanup_outdir(outdir, archive)
         else:
@@ -501,8 +504,8 @@ def _extract_archive(archive, verbosity=0, interactive=True, outdir=None,
                 pass
 
 
-def _create_archive(archive, filenames, verbosity=0, interactive=True,
-                    program=None, format=None, compression=None):
+def _create_archive(archive, filenames, verbosity=0, interactive=True, program=None,
+                    format=None, compression=None, timeout=None):
     """Create an archive."""
     if format is None:
         format, compression = get_archive_format(archive)
@@ -521,13 +524,13 @@ def _create_archive(archive, filenames, verbosity=0, interactive=True,
         # an empty command list means the get_archive_cmdlist() function
         # already handled the command (eg. when it's a builtin Python
         # function)
-        run_archive_cmdlist(cmdlist, verbosity=verbosity)
+        run_archive_cmdlist(cmdlist, verbosity=verbosity, timeout=timeout)
     if origarchive:
         shutil.move(archive, origarchive)
 
 
-def _handle_archive(archive, command, verbosity=0, interactive=True,
-                    program=None, format=None, compression=None):
+def _handle_archive(archive, command, verbosity=0, interactive=True, program=None,
+                    format=None, compression=None, timeout=None):
     """Test and list archives."""
     if format is None:
         format, compression = get_archive_format(archive)
@@ -543,7 +546,7 @@ def _handle_archive(archive, command, verbosity=0, interactive=True,
         # an empty command list means the get_archive_cmdlist() function
         # already handled the command (eg. when it's a builtin Python
         # function)
-        run_archive_cmdlist(cmdlist, verbosity=verbosity)
+        run_archive_cmdlist(cmdlist, verbosity=verbosity, timeout=timeout)
 
 
 def get_archive_cmdlist_func (program, command, format):
@@ -593,7 +596,7 @@ def _diff_archives (archive1, archive2, verbosity=0, interactive=True):
         shutil.rmtree(tmpdir1, onerror=rmtree_log_error)
 
 
-def _search_archive(pattern, archive, verbosity=0, interactive=True):
+def _search_archive(pattern, archive, verbosity=0, interactive=True, timeout=None):
     """Search for given pattern in an archive."""
     grep = util.find_program("grep")
     if not grep:
@@ -601,7 +604,7 @@ def _search_archive(pattern, archive, verbosity=0, interactive=True):
         raise util.PatoolError(msg)
     tmpdir = util.tmpdir()
     try:
-        path = _extract_archive(archive, outdir=tmpdir, verbosity=-1)
+        path = _extract_archive(archive, outdir=tmpdir, verbosity=-1, timeout=timeout)
         return util.run_checked([grep, "-r", "-e", pattern, "."], ret_ok=(0, 1), verbosity=1, cwd=path)
     finally:
         shutil.rmtree(tmpdir, onerror=rmtree_log_error)
@@ -679,44 +682,46 @@ def _recompress_archive(archive, verbosity=0, interactive=True):
 
 # the patool library API
 
-def extract_archive(archive, verbosity=0, outdir=None, program=None, interactive=True):
+def extract_archive(archive, verbosity=0, outdir=None, program=None, interactive=True, timeout=None):
     """Extract given archive."""
     util.check_existing_filename(archive)
     if verbosity >= 0:
         util.log_info("Extracting %s ..." % archive)
-    return _extract_archive(archive, verbosity=verbosity, interactive=interactive, outdir=outdir, program=program)
+    return _extract_archive(archive, verbosity=verbosity, interactive=interactive,
+                            outdir=outdir, program=program, timeout=timeout)
 
 
-def list_archive(archive, verbosity=1, program=None, interactive=True):
+def list_archive(archive, verbosity=1, program=None, interactive=True, timeout=None):
     """List given archive."""
     # Set default verbosity to 1 since the listing output should be visible.
     util.check_existing_filename(archive)
     if verbosity >= 0:
         util.log_info("Listing %s ..." % archive)
     return _handle_archive(archive, 'list', verbosity=verbosity,
-      interactive=interactive, program=program)
+      interactive=interactive, program=program, timeout=timeout)
 
 
-def test_archive(archive, verbosity=0, program=None, interactive=True):
+def test_archive(archive, verbosity=0, program=None, interactive=True, timeout=None):
     """Test given archive."""
     util.check_existing_filename(archive)
     if verbosity >= 0:
         util.log_info("Testing %s ..." % archive)
     res = _handle_archive(archive, 'test', verbosity=verbosity,
-        interactive=interactive, program=program)
+        interactive=interactive, program=program, timeout=timeout)
     if verbosity >= 0:
         util.log_info("... tested ok.")
     return res
 
 
-def create_archive(archive, filenames, verbosity=0, program=None, interactive=True):
+def create_archive(archive, filenames, verbosity=0, program=None, interactive=True,
+                   timeout=None):
     """Create given archive with given files."""
     util.check_new_filename(archive)
     util.check_archive_filelist(filenames)
     if verbosity >= 0:
         util.log_info("Creating %s ..." % archive)
     res = _create_archive(archive, filenames, verbosity=verbosity,
-                          interactive=interactive, program=program)
+                          interactive=interactive, program=program, timeout=timeout)
     if verbosity >= 0:
         util.log_info("... %s created." % archive)
     return res
